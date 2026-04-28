@@ -31,6 +31,9 @@ pub enum Error {
     #[error("output {output} is inside target {target}; choose a path outside the target")]
     OutputInsideTarget { output: PathBuf, target: PathBuf },
 
+    #[error("user aborted")]
+    UserAbort,
+
     #[error("config: {0}")]
     Config(String),
 

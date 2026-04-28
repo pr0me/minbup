@@ -51,10 +51,10 @@ pub fn run<B: Backend>(
                         });
                     }
                     KeyCode::Char('a') => {
-                        return Ok(ReviewOutcome::KeepAll);
+                        keep.iter_mut().for_each(|k| *k = true);
                     }
                     KeyCode::Char('s') => {
-                        return Ok(ReviewOutcome::SkipAll);
+                        keep.iter_mut().for_each(|k| *k = false);
                     }
                     KeyCode::Esc => {
                         return Ok(ReviewOutcome::SkipAll);
@@ -152,11 +152,13 @@ fn draw(f: &mut Frame, queue: &[LargeFileEntry], keep: &[bool], state: &mut List
             Span::styled("[space/enter]", Style::default().fg(ACCENT)),
             Span::raw(" toggle  "),
             Span::styled("[a]", Style::default().fg(ACCENT)),
-            Span::raw(" keep all  "),
+            Span::raw(" select all  "),
             Span::styled("[s]", Style::default().fg(ACCENT)),
-            Span::raw(" skip all  "),
+            Span::raw(" deselect all  "),
             Span::styled("[q]", Style::default().fg(ACCENT)),
-            Span::raw(" confirm"),
+            Span::raw(" confirm  "),
+            Span::styled("[esc]", Style::default().fg(ACCENT)),
+            Span::raw(" abort"),
         ])),
         rows[2],
     );

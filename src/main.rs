@@ -72,6 +72,9 @@ fn run_backup(args: BackupArgs) -> Result<()> {
     let state = ProgressState::new();
     state.set_phase(Phase::Discover);
 
+    let state_for_signal = state.clone();
+    let _ = ctrlc::set_handler(move || state_for_signal.signal_abort());
+
     let interactive = tui::is_tty();
     let mut tui_handle = if interactive {
         Some(spawn_tui(state.clone())?)
@@ -251,6 +254,9 @@ fn run_pipeline<W: Write>(
     let mut large_queue = Vec::<LargeFileEntry>::new();
 
     while let Ok(ev) = rx.recv() {
+        if state.is_aborted() {
+            return Err(Error::UserAbort);
+        }
         match ev {
             WalkEvent::Small { abs, rel, size, mtime } => {
                 state.set_current_path(abs.as_str());
@@ -261,6 +267,9 @@ fn run_pipeline<W: Write>(
             }
             WalkEvent::EndOfSmall => break,
         }
+    }
+    if state.is_aborted() {
+        return Err(Error::UserAbort);
     }
 
     walker_join
@@ -291,6 +300,9 @@ fn run_pipeline<W: Write>(
     if !kept_indices.is_empty() {
         state.set_phase(Phase::StreamLarge);
         for i in kept_indices {
+            if state.is_aborted() {
+                return Err(Error::UserAbort);
+            }
             let e = &large_queue[i];
             state.set_current_path(e.abs.as_str());
             aw.add_file(&e.abs, e.rel.as_std_path(), e.mtime, e.size)?;

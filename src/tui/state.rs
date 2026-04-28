@@ -1,5 +1,5 @@
 use std::ops::Deref;
-use std::sync::atomic::{AtomicU64, AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
@@ -52,6 +52,7 @@ pub struct Inner {
     pub large_queued: AtomicU64,
     pub errors_skipped: AtomicU64,
     pub phase: AtomicU8,
+    pub abort: AtomicBool,
     pub start: Instant,
     pub current_path: Mutex<String>,
 }
@@ -72,6 +73,7 @@ impl Default for ProgressState {
             large_queued: AtomicU64::new(0),
             errors_skipped: AtomicU64::new(0),
             phase: AtomicU8::new(Phase::Preflight as u8),
+            abort: AtomicBool::new(false),
             start: Instant::now(),
             current_path: Mutex::new(String::new()),
         }))
@@ -95,6 +97,14 @@ impl ProgressState {
         if let Ok(mut g) = self.current_path.lock() {
             *g = p.into();
         }
+    }
+
+    pub fn is_aborted(&self) -> bool {
+        self.abort.load(Ordering::Relaxed)
+    }
+
+    pub fn signal_abort(&self) {
+        self.abort.store(true, Ordering::Relaxed);
     }
 }
 

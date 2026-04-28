@@ -7,6 +7,7 @@ use std::thread::JoinHandle;
 use std::time::Duration;
 
 use crossbeam_channel::{Receiver, Sender};
+use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use crossterm::execute;
 use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
@@ -102,7 +103,7 @@ fn run_loop<B: ratatui::backend::Backend>(
     shutdown_rx: &Receiver<()>,
 ) -> Result<()> {
     loop {
-        if shutdown_rx.try_recv().is_ok() {
+        if shutdown_rx.try_recv().is_ok() || vm.state.is_aborted() {
             term.draw(|f| view::draw(f, vm)).map_err(io_err)?;
             return Ok(());
         }
@@ -110,10 +111,24 @@ fn run_loop<B: ratatui::backend::Backend>(
             let outcome = review::run(term, &queue).map_err(io_err)?;
             let _ = review_resp_tx.send(outcome);
         }
+        if event::poll(Duration::from_millis(0)).map_err(io_err)? {
+            if let Event::Key(k) = event::read().map_err(io_err)? {
+                if k.kind == KeyEventKind::Press && is_abort_key(&k) {
+                    vm.state.signal_abort();
+                    return Ok(());
+                }
+            }
+        }
         vm.tick();
         term.draw(|f| view::draw(f, vm)).map_err(io_err)?;
         std::thread::sleep(Duration::from_millis(33));
     }
+}
+
+fn is_abort_key(k: &crossterm::event::KeyEvent) -> bool {
+    (k.modifiers.contains(KeyModifiers::CONTROL) && k.code == KeyCode::Char('c'))
+        || k.code == KeyCode::Esc
+        || k.code == KeyCode::Char('q')
 }
 
 fn io_err(e: io::Error) -> Error {

@@ -11,6 +11,21 @@ use crate::tui::state::ProgressState;
 use crate::walk::gitmeta;
 use crate::walk::{DiscoverReport, Project};
 
+/// True for `target/` directories whose sibling has a `Cargo.toml` (cargo build artifact).
+fn is_rust_target(entry: &DirEntry) -> bool {
+    if entry.file_name() != "target" {
+        return false;
+    }
+    if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+        return false;
+    }
+    entry
+        .path()
+        .parent()
+        .map(|p| p.join("Cargo.toml").is_file())
+        .unwrap_or(false)
+}
+
 /// Find every git project under `target` (skip subtrees beneath each .git).
 /// updates `state.projects_found` as projects are discovered.
 pub fn find_projects(target: &Utf8Path, state: &ProgressState) -> Vec<Project> {
@@ -24,6 +39,9 @@ pub fn find_projects(target: &Utf8Path, state: &ProgressState) -> Vec<Project> {
         .hidden(false)
         .follow_links(false)
         .filter_entry(move |entry: &DirEntry| {
+            if is_rust_target(entry) {
+                return false;
+            }
             let is_git = entry.file_name() == ".git"
                 && entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
             if is_git {
@@ -88,6 +106,7 @@ pub fn build_walker(
 
     let ov = ob.build().map_err(|e| Error::Walk(format!("override build: {e}")))?;
     wb.overrides(ov);
+    wb.filter_entry(|e| !is_rust_target(e));
     Ok(wb.build())
 }
 
