@@ -1,0 +1,46 @@
+[package]
+name = "minbup"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "minimal migration backup tool: tar+zstd archive with optional age encryption, git-aware sidecars, and a sleek TUI"
+repository = "https://github.com/pr0me/minbup"
+
+[dependencies]
+clap = { version = "4", features = ["derive", "wrap_help"] }
+anyhow = "1"
+thiserror = "1"
+
+ignore = "0.4"
+
+tar = "0.4"
+zstd = { version = "0.13", features = ["zstdmt"] }
+age = { version = "0.10", default-features = false }
+
+blake3 = "1"
+
+ratatui = "0.29"
+crossterm = "0.28"
+
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+
+crossbeam-channel = "0.5"
+
+toml = "0.8"
+serde = { version = "1", features = ["derive"] }
+
+humansize = "2"
+time = { version = "0.3", features = ["formatting", "macros", "serde"] }
+camino = { version = "1", features = ["serde1"] }
+rpassword = "7"
+num_cpus = "1"
+
+[dev-dependencies]
+assert_cmd = "2"
+tempfile = "3"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
