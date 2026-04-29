@@ -31,6 +31,7 @@ use crate::tui::state::{Phase, ProgressState};
 use crate::tui::{spawn as spawn_tui, PlainProgress, TuiHandle};
 use crate::util::{
     append_partial_suffix, default_output_name, ensure_output_outside_target, human_bytes,
+    human_duration, normalize_exclude,
 };
 use crate::walk::{DiscoverReport, WalkEvent};
 
@@ -66,8 +67,12 @@ fn init_tracing(verbose: u8) {
 }
 
 fn run_backup(args: BackupArgs) -> Result<()> {
-    let settings = build_backup_settings(args)?;
-    ensure_output_outside_target(settings.output.as_std_path(), settings.target.as_std_path())?;
+    let (settings, excluded_subtrees) = build_backup_settings(args)?;
+    ensure_output_outside_target(
+        settings.output.as_std_path(),
+        settings.target.as_std_path(),
+        &excluded_subtrees,
+    )?;
 
     let state = ProgressState::new();
     state.set_phase(Phase::Discover);
@@ -106,7 +111,8 @@ fn run_backup(args: BackupArgs) -> Result<()> {
             state.set_phase(Phase::Done);
             fs::rename(partial.as_std_path(), settings.output.as_std_path())?;
             shutdown_progress(tui_handle, plain);
-            print_backup_summary(&settings, &stats);
+            let elapsed = state.start.elapsed();
+            print_backup_summary(&settings, &stats, report.projects.len(), elapsed);
             Ok(())
         }
         Err(e) => {
@@ -128,7 +134,9 @@ fn shutdown_progress(tui: Option<TuiHandle>, plain: Option<PlainProgress>) {
     }
 }
 
-fn build_backup_settings(args: BackupArgs) -> Result<BackupSettings> {
+fn build_backup_settings(
+    args: BackupArgs,
+) -> Result<(BackupSettings, Vec<std::path::PathBuf>)> {
     let target = args
         .target
         .canonicalize_utf8()
@@ -140,17 +148,32 @@ fn build_backup_settings(args: BackupArgs) -> Result<BackupSettings> {
     let zstd_workers = args
         .zstd_workers
         .unwrap_or_else(|| (num_cpus::get() as u32).min(4));
-    Ok(BackupSettings {
-        target,
-        output,
-        encrypt: args.encrypt,
-        large_threshold: args.large_threshold,
-        zstd_level: args.zstd_level,
-        zstd_workers,
-        large_files: args.large_files.into(),
-        no_default_excludes: args.no_default_excludes,
-        extra_excludes: args.exclude,
-    })
+
+    let normalized = args
+        .exclude
+        .iter()
+        .filter_map(|raw| normalize_exclude(&target, raw))
+        .collect::<Vec<_>>();
+    let extra_excludes = normalized.iter().map(|n| n.pattern.clone()).collect();
+    let excluded_subtrees = normalized
+        .into_iter()
+        .filter_map(|n| n.canonical_path)
+        .collect();
+
+    Ok((
+        BackupSettings {
+            target,
+            output,
+            encrypt: args.encrypt,
+            large_threshold: args.large_threshold,
+            zstd_level: args.zstd_level,
+            zstd_workers,
+            large_files: args.large_files.into(),
+            no_default_excludes: args.no_default_excludes,
+            extra_excludes,
+        },
+        excluded_subtrees,
+    ))
 }
 
 fn open_and_run(
@@ -314,28 +337,34 @@ fn run_pipeline<W: Write>(
     Ok((inner, stats))
 }
 
-fn print_backup_summary(settings: &BackupSettings, stats: &ArchiveStats) {
+fn print_backup_summary(
+    settings: &BackupSettings,
+    stats: &ArchiveStats,
+    projects: usize,
+    elapsed: std::time::Duration,
+) {
+    let on_disk = std::fs::metadata(settings.output.as_std_path()).map(|m| m.len()).ok();
     eprintln!();
-    eprintln!("✓ archive: {}", settings.output);
+    eprintln!("✓ {}", settings.output);
+    eprintln!("  files     {}", stats.files);
+    eprintln!("  projects  {}", projects);
     eprintln!(
-        "  {} file(s), {} uncompressed",
-        stats.files,
+        "  source    {}  (extracted size)",
         human_bytes(stats.uncompressed_bytes)
     );
-    eprintln!("  manifest entries: {}", stats.manifest_entries);
-    if let Ok(md) = std::fs::metadata(settings.output.as_std_path()) {
-        let on_disk = md.len();
+    if let Some(d) = on_disk {
         let ratio = if stats.uncompressed_bytes > 0 {
-            on_disk as f64 / stats.uncompressed_bytes as f64
+            d as f64 / stats.uncompressed_bytes as f64
         } else {
             0.0
         };
         eprintln!(
-            "  on-disk: {} ({:.0}% of source)",
-            human_bytes(on_disk),
+            "  archive   {}  ({:.0}% of source)",
+            human_bytes(d),
             ratio * 100.0
         );
     }
+    eprintln!("  elapsed   {}", human_duration(elapsed));
 }
 
 fn run_restore(args: RestoreArgs) -> Result<()> {

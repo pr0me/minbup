@@ -39,8 +39,10 @@ pub struct BackupArgs {
     #[arg(long)]
     pub no_default_excludes: bool,
 
-    /// Extra exclusion globs (gitignore syntax). May be passed multiple times.
-    #[arg(short = 'e', long = "exclude", value_name = "GLOB")]
+    /// Extra exclusion patterns. accepts gitignore-style globs (e.g. `*.bak`) or
+    /// filesystem paths (e.g. `../binarly`, `./vendor`) that resolve inside the target.
+    /// May be passed multiple times.
+    #[arg(short = 'e', long = "exclude", value_name = "PATTERN")]
     pub exclude: Vec<String>,
 
     /// Threshold above which a file is queued for review (in bytes).
